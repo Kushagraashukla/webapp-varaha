@@ -39,7 +39,7 @@ class MultiLabelEncoder(BaseEstimator, TransformerMixin):
         return X
 
 import streamlit as st
-with open("C:/Users/OMEN/OneDrive/Documents/machine learning/ML projects/carbonfootprintpredictor/trained_model.sav", "rb") as f:
+with open("trained_model.sav", "rb") as f:
     loaded_model = dill.load(f)
 
 st.title("Carbon Footprint Predictor")
@@ -96,3 +96,4 @@ if st.button("Predict"):
 
     pred = loaded_model.predict(input_df)[0]
     st.success(f"Estimated Carbon Footprint: {pred:.2f}")
+
