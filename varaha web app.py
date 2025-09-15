@@ -1,99 +1,98 @@
-import numpy as np
+# --- Re-declare everything your pipeline needs ---
 import pandas as pd
-import pickle
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, FunctionTransformer
+import dill
+
+# same as training
+low_impact = ['How Long TV PC Daily Hour', 'How Long Internet Daily Hour']
+multi_cols = ['Recycling', 'Cooking_With']
+onehot_cols = ['Body Type','Diet','Heating Energy Source','How Often Shower',
+               'Transport','Vehicle Type','Social Activity','Waste Bag Size',
+               'Frequency of Traveling by Air','Energy efficiency']
+
+def drop_cols(df):
+    return df.drop(columns=low_impact)
+
+class MultiLabelEncoder(BaseEstimator, TransformerMixin):
+    def __init__(self, cols):
+        self.cols = cols
+        self.encoders = {}
+    def fit(self, X, y=None):
+        from sklearn.preprocessing import MultiLabelBinarizer
+        for c in self.cols:
+            mlb = MultiLabelBinarizer()
+            mlb.fit(X[c].apply(lambda x: x.split(',') if isinstance(x, str) else []))
+            self.encoders[c] = mlb
+        return self
+    def transform(self, X):
+        X = X.copy()
+        for c, mlb in self.encoders.items():
+            arr = mlb.transform(X[c].apply(lambda x: x.split(',') if isinstance(x, str) else []))
+            new_cols = [f"{c}_{cls}" for cls in mlb.classes_]
+            X = pd.concat([X.drop(columns=[c]),
+                           pd.DataFrame(arr, columns=new_cols, index=X.index)],
+                          axis=1)
+        return X
+
 import streamlit as st
+with open("C:/Users/OMEN/OneDrive/Documents/machine learning/ML projects/carbonfootprintpredictor/trained_model.sav", "rb") as f:
+    loaded_model = dill.load(f)
 
-with open(r"C:/Users/OMEN/OneDrive/Documents/machine learning/ML projects/carbonfootprintpredictor/trained_model.sav","rb") as f:
-    loaded_model = pickle.load(f)
+st.title("Carbon Footprint Predictor")
 
-def pre(input_df):
-    try:
-        return loaded_model.predict(input_df)[0]
-    except:
-        return None
+# ---------- User inputs ----------
+sex          = st.selectbox("Sex", ["male", "female"])
+body_type    = st.selectbox("Body Type", ["obese","overweight","underweight","normal"])
+diet         = st.selectbox("Diet", ["omnivore","vegetarian","vegan","pescatarian"])
+shower       = st.selectbox("How Often Shower",
+                            ["daily","less frequently","more frequently","twice a day"])
+heating      = st.selectbox("Heating Energy Source",
+                            ["electricity","natural gas","wood","coal"])
+transport    = st.selectbox("Transport", ["public","private","walk/bicycle"])
+vehicle_type = st.selectbox("Vehicle Type",
+                            ["petrol","diesel","electric","hybrid","lpg","unknown"])
+social       = st.selectbox("Social Activity", ["never","sometimes","often"])
+grocery      = st.number_input("Monthly Grocery Bill", min_value=0)
+air_freq     = st.selectbox("Frequency of Traveling by Air",
+                            ["never","rarely","frequently","very frequently"])
+vehicle_km   = st.number_input("Vehicle Monthly Distance Km", min_value=0)
+bag_size     = st.selectbox("Waste Bag Size", ["small","medium","large","extra large"])
+bag_count    = st.number_input("Waste Bag Weekly Count", min_value=0)
+tv_hour      = st.number_input("How Long TV PC Daily Hour", min_value=0)
+new_clothes  = st.number_input("How Many New Clothes Monthly", min_value=0)
+internet_hr  = st.number_input("How Long Internet Daily Hour", min_value=0)
+energy_eff   = st.selectbox("Energy efficiency", ["Yes","No","Sometimes"])
+recycling    = st.multiselect("Recycling", ["Paper","Plastic","Glass","Metal"])
+cooking      = st.multiselect("Cooking With",
+                              ["Stove","Oven","Microwave","Grill","Airfryer"])
 
-feature_names = [
-    "Sex","Monthly Grocery Bill","Vehicle Monthly Distance Km","Waste Bag Weekly Count","How Many New Clothes Monthly",
-    "Recycling Glass","Recycling Metal","Recycling Paper","Recycling Plastic",
-    "Cooking with Airfryer","Cooking with Grill","Cooking with Microwave","Cooking with Oven","Cooking with Stove",
-    "Body Type Obese","Body Type Overweight","Body Type Underweight",
-    "Diet Pescatarian","Diet Vegan","Diet Vegetarian",
-    "Heating Energy Source Electricity","Heating Energy Source Natural Gas","Heating Energy Source Wood",
-    "How Often Shower Less Frequently","How Often Shower More Frequently","How Often Shower Twice a Day",
-    "Transport Public","Transport Walk/Bicycle",
-    "Vehicle Type Electric","Vehicle Type Hybrid","Vehicle Type LPG","Vehicle Type Petrol","Vehicle Type Unknown",
-    "Social Activity Often","Social Activity Sometimes",
-    "Waste Bag Size Large","Waste Bag Size Medium","Waste Bag Size Small",
-    "Frequency of Traveling by Air Never","Frequency of Traveling by Air Rarely","Frequency of Traveling by Air Very Frequently",
-    "Energy Efficiency Sometimes","Energy Efficiency Yes"
-]
+# ---------- Prediction ----------
+if st.button("Predict"):
+    input_df = pd.DataFrame([{
+        "Sex": sex,
+        "Body Type": body_type,
+        "Diet": diet,
+        "How Often Shower": shower,
+        "Heating Energy Source": heating,
+        "Transport": transport,
+        "Vehicle Type": vehicle_type,
+        "Social Activity": social,
+        "Monthly Grocery Bill": grocery,
+        "Frequency of Traveling by Air": air_freq,
+        "Vehicle Monthly Distance Km": vehicle_km,
+        "Waste Bag Size": bag_size,
+        "Waste Bag Weekly Count": bag_count,
+        "How Long TV PC Daily Hour": tv_hour,
+        "How Many New Clothes Monthly": new_clothes,
+        "How Long Internet Daily Hour": internet_hr,
+        "Energy efficiency": energy_eff,
+        "Recycling": recycling,       # keep as list for MultiLabelEncoder
+        "Cooking_With": cooking       # keep as list
+    }])
 
-def main():
-    st.title("Varaha Web App")
-    sex=st.selectbox("Sex (0=Female,1=Male)",[0,1])
-    grocery=st.number_input("Monthly Grocery Bill",min_value=0)
-    vehicle_km=st.number_input("Vehicle Monthly Distance Km",min_value=0)
-    waste_bag=st.number_input("Waste Bag Weekly Count",min_value=0)
-    clothes=st.number_input("How Many New Clothes Monthly",min_value=0)
-    rec_glass=st.selectbox("Recycling Glass",[False,True])
-    rec_metal=st.selectbox("Recycling Metal",[False,True])
-    rec_paper=st.selectbox("Recycling Paper",[False,True])
-    rec_plastic=st.selectbox("Recycling Plastic",[False,True])
-    cook_airfryer=st.selectbox("Cooking with Airfryer",[False,True])
-    cook_grill=st.selectbox("Cooking with Grill",[False,True])
-    cook_microwave=st.selectbox("Cooking with Microwave",[False,True])
-    cook_oven=st.selectbox("Cooking with Oven",[False,True])
-    cook_stove=st.selectbox("Cooking with Stove",[False,True])
-    body_obese=st.selectbox("Body Type Obese",[False,True])
-    body_overweight=st.selectbox("Body Type Overweight",[False,True])
-    body_underweight=st.selectbox("Body Type Underweight",[False,True])
-    diet_pesc=st.selectbox("Diet Pescatarian",[False,True])
-    diet_vegan=st.selectbox("Diet Vegan",[False,True])
-    diet_veg=st.selectbox("Diet Vegetarian",[False,True])
-    heat_electric=st.selectbox("Heating Energy Source Electricity",[False,True])
-    heat_gas=st.selectbox("Heating Energy Source Natural Gas",[False,True])
-    heat_wood=st.selectbox("Heating Energy Source Wood",[False,True])
-    shower_less=st.selectbox("How Often Shower Less Frequently",[False,True])
-    shower_more=st.selectbox("How Often Shower More Frequently",[False,True])
-    shower_twice=st.selectbox("How Often Shower Twice a Day",[False,True])
-    transport_public=st.selectbox("Transport Public",[False,True])
-    transport_walk=st.selectbox("Transport Walk/Bicycle",[False,True])
-    vehicle_electric=st.selectbox("Vehicle Type Electric",[False,True])
-    vehicle_hybrid=st.selectbox("Vehicle Type Hybrid",[False,True])
-    vehicle_lpg=st.selectbox("Vehicle Type LPG",[False,True])
-    vehicle_petrol=st.selectbox("Vehicle Type Petrol",[False,True])
-    vehicle_unknown=st.selectbox("Vehicle Type Unknown",[False,True])
-    social_often=st.selectbox("Social Activity Often",[False,True])
-    social_sometimes=st.selectbox("Social Activity Sometimes",[False,True])
-    bag_large=st.selectbox("Waste Bag Size Large",[False,True])
-    bag_medium=st.selectbox("Waste Bag Size Medium",[False,True])
-    bag_small=st.selectbox("Waste Bag Size Small",[False,True])
-    air_never=st.selectbox("Frequency of Traveling by Air Never",[False,True])
-    air_rarely=st.selectbox("Frequency of Traveling by Air Rarely",[False,True])
-    air_veryfreq=st.selectbox("Frequency of Traveling by Air Very Frequently",[False,True])
-    energy_sometimes=st.selectbox("Energy Efficiency Sometimes",[False,True])
-    energy_yes=st.selectbox("Energy Efficiency Yes",[False,True])
-
-    if st.button("Predict"):
-        input_list=[sex,grocery,vehicle_km,waste_bag,clothes,
-            rec_glass,rec_metal,rec_paper,rec_plastic,
-            cook_airfryer,cook_grill,cook_microwave,cook_oven,cook_stove,
-            body_obese,body_overweight,body_underweight,
-            diet_pesc,diet_vegan,diet_veg,
-            heat_electric,heat_gas,heat_wood,
-            shower_less,shower_more,shower_twice,
-            transport_public,transport_walk,
-            vehicle_electric,vehicle_hybrid,vehicle_lpg,vehicle_petrol,vehicle_unknown,
-            social_often,social_sometimes,
-            bag_large,bag_medium,bag_small,
-            air_never,air_rarely,air_veryfreq,
-            energy_sometimes,energy_yes]
-        df_input=pd.DataFrame([input_list],columns=feature_names)
-        pred=pre(df_input)
-        if pred is None:
-            st.error("Invalid input! Please check your entries.")
-        else:
-            st.success(f"The average carbon footprint of the person is {pred}")
-
-if __name__=='__main__':
-    main()
+    pred = loaded_model.predict(input_df)[0]
+    st.success(f"Estimated Carbon Footprint: {pred:.2f}")
